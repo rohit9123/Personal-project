@@ -1,0 +1,11 @@
+leetcode:
+  # Get these from browser DevTools → Application → Cookies → leetcode.com
+  session: PASTE_YOUR_LEETCODE_SESSION_HERE
+  csrf-token: PASTE_YOUR_CSRFTOKEN_HERE   # needed for topic tags; leave blank to skip tags
+
+server:
+  port: 8080
+
+spring:
+  thymeleaf:
+    cache: false

@@ -7,3 +7,6 @@ target/
 apache-maven-*/
 .code-review-graph/
 .claude/
+
+# LeetCode Daily — local config with session cookie (never commit this)
+leetcode-daily/src/main/resources/application.yml
