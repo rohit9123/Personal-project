@@ -1,3 +1,4 @@
+
 package com.example.leetcodedaily;
 
 import org.springframework.boot.SpringApplication;

@@ -1,7 +1,10 @@
 package com.example.leetcodedaily.web;
 
+import com.example.leetcodedaily.model.StreakData;
 import com.example.leetcodedaily.service.LeetCodeService;
 import com.example.leetcodedaily.service.StreakService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,6 +14,8 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 @Controller
 public class DashboardController {
+
+    private static final Logger log = LoggerFactory.getLogger(DashboardController.class);
 
     private final LeetCodeService leetCodeService;
     private final StreakService streakService;
@@ -24,7 +29,15 @@ public class DashboardController {
     public String dashboard(Model model,
                             @RequestParam(required = false, defaultValue = "") String difficulty) {
         model.addAttribute("difficulty", difficulty);
-        model.addAttribute("streak", streakService.getStreak());
+
+        StreakData streak;
+        try {
+            streak = streakService.getStreak();
+        } catch (Exception e) {
+            log.warn("Could not read streak: {}", e.getMessage());
+            streak = new StreakData();
+        }
+        model.addAttribute("streak", streak);
 
         try {
             model.addAttribute("picks", leetCodeService.getPicks(difficulty, 2));
