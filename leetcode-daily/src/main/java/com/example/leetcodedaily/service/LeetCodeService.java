@@ -86,15 +86,31 @@ public class LeetCodeService {
     private List<Problem> fetchUnsolvedProblems() {
         HttpEntity<Void> request = new HttpEntity<>(buildHeaders());
 
-        ResponseEntity<ProblemsResponse> response = restTemplate.exchange(
-            PROBLEMS_URL, HttpMethod.GET, request, ProblemsResponse.class
+        // Fetch as String first so we can detect HTML (session redirect) before Jackson tries to parse it
+        ResponseEntity<String> raw = restTemplate.exchange(
+            PROBLEMS_URL, HttpMethod.GET, request, String.class
         );
 
-        if (response.getBody() == null || response.getBody().statStatusPairs == null) {
+        String body = raw.getBody();
+        if (body == null || !body.stripLeading().startsWith("{")) {
+            throw new IllegalStateException(
+                "Session expired or invalid — LeetCode returned a login page instead of JSON. "
+                + "Copy a fresh LEETCODE_SESSION cookie and update application.yml.");
+        }
+
+        ProblemsResponse parsed;
+        try {
+            parsed = objectMapper.readValue(body, ProblemsResponse.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not parse LeetCode response: " + e.getMessage());
+        }
+
+        if (parsed.statStatusPairs == null) {
             throw new IllegalStateException("Empty response from LeetCode API. Session may be expired.");
         }
 
-        return response.getBody().statStatusPairs.stream()
+        return parsed.statStatusPairs.stream()
+            .filter(p -> p.stat != null && p.difficulty != null)  // guard malformed entries
             .filter(p -> !"ac".equals(p.status))    // skip solved
             .filter(p -> !p.paidOnly)               // skip premium-only
             .filter(p -> p.stat.frontendQuestionId > 0)
@@ -156,6 +172,9 @@ public class LeetCodeService {
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         headers.set(HttpHeaders.REFERER, "https://leetcode.com/");
+        // LeetCode returns Content-Type: text/html even for JSON responses.
+        // Sending Accept: application/json makes the body actually come back as JSON.
+        headers.set(HttpHeaders.ACCEPT, "application/json");
         return headers;
     }
 
@@ -173,28 +192,28 @@ public class LeetCodeService {
     // -------------------------------------------------------------------------
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private static class ProblemsResponse {
+    static class ProblemsResponse {
         @JsonProperty("stat_status_pairs")
-        List<StatStatusPair> statStatusPairs;
+        public List<StatStatusPair> statStatusPairs;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private static class StatStatusPair {
-        Stat stat;
-        Difficulty difficulty;
-        @JsonProperty("paid_only") boolean paidOnly;
-        String status; // "ac" | "notac" | null
+    static class StatStatusPair {
+        public Stat stat;
+        public Difficulty difficulty;
+        @JsonProperty("paid_only") public boolean paidOnly;
+        public String status; // "ac" | "notac" | null
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private static class Stat {
-        @JsonProperty("frontend_question_id") int frontendQuestionId;
-        @JsonProperty("question__title")      String title;
-        @JsonProperty("question__title_slug") String titleSlug;
+    static class Stat {
+        @JsonProperty("frontend_question_id") public int frontendQuestionId;
+        @JsonProperty("question__title")      public String title;
+        @JsonProperty("question__title_slug") public String titleSlug;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private static class Difficulty {
-        int level; // 1=Easy 2=Medium 3=Hard
+    static class Difficulty {
+        public int level; // 1=Easy 2=Medium 3=Hard
     }
 }
