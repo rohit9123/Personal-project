@@ -1,0 +1,29 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: order-service
+
+  # Static instance list — no Eureka needed for this demo.
+  # Spring Cloud LoadBalancer uses SimpleDiscoveryClient backed by this config.
+  # Add or remove URIs here to change the instance pool.
+  cloud:
+    discovery:
+      client:
+        simple:
+          instances:
+            inventory-service:
+              - instanceId: inventory-1
+                host: localhost
+                port: 9081
+              - instanceId: inventory-2
+                host: localhost
+                port: 9083   # start a second instance to observe round-robin
+
+# Expose LoadBalancer actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

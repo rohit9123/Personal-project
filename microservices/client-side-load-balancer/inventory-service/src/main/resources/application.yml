@@ -1,0 +1,6 @@
+server:
+  port: 9081   # start a second instance with: mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=9083
+
+spring:
+  application:
+    name: inventory-service

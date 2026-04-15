@@ -1,0 +1,9 @@
+target/
+*.class
+*.jar
+*.jar.original
+*.log
+.DS_Store
+apache-maven-*/
+.code-review-graph/
+.claude/

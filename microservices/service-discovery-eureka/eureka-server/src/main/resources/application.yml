@@ -1,0 +1,15 @@
+server:
+  port: 8761
+
+spring:
+  application:
+    name: eureka-server
+
+eureka:
+  client:
+    register-with-eureka: false   # server should not register itself
+    fetch-registry: false         # server does not need to fetch from another peer
+
+  server:
+    enable-self-preservation: true           # don't evict instances during network blips
+    eviction-interval-timer-in-ms: 5000      # how often to check for expired leases

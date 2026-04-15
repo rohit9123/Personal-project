@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: order-service
+
+# --- Downstream service URLs ---
+payment:
+  service:
+    url: http://localhost:8081
+
+inventory:
+  service:
+    url: http://localhost:8082
+
+# --- Resilience4j Bulkhead config ---
+resilience4j:
+
+  # ThreadPoolBulkhead — payment calls get their own thread pool.
+  # If the pool is full, new calls are rejected immediately (BulkheadFullException)
+  # instead of queuing indefinitely and draining shared server threads.
+  thread-pool-bulkhead:
+    instances:
+      payment:
+        max-thread-pool-size: 2          # at most 2 concurrent payment calls
+        core-thread-pool-size: 2
+        queue-capacity: 1                # allow 1 request to wait; 4th request → rejected
+
+  # SemaphoreBulkhead — inventory calls are bounded by a counting semaphore.
+  # Lighter than a thread pool (no extra threads), but blocks the caller's thread.
+  bulkhead:
+    instances:
+      inventory:
+        max-concurrent-calls: 5          # at most 5 concurrent inventory calls
+        max-wait-duration: 0ms           # don't wait if all permits are taken → reject immediately
+
+# Expose Resilience4j metrics via Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,bulkheads,threadpoolbulkheads
+  health:
+    bulkheads:
+      enabled: true
