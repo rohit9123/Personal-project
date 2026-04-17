@@ -1,0 +1,88 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: order-service
+
+inventory:
+  service:
+    url: http://localhost:8082
+
+# ---------------------------------------------------------------------------
+# Resilience4j Retry configuration
+#
+# Three named instances — one per strategy. Each is bound to a @Retry(name=)
+# annotation in FixedRetryClient, ExponentialRetryClient, JitterRetryClient.
+#
+# retry-exceptions: ONLY retry on server-side errors (5xx) and connection
+# failures. Do NOT retry on 4xx client errors — those are bugs, not transient.
+# ---------------------------------------------------------------------------
+resilience4j:
+  retry:
+    instances:
+
+      # -----------------------------------------------------------------------
+      # FIXED RETRY — constant 500ms wait between every attempt
+      #
+      # Timeline (failTimes=2):
+      #   Attempt 1 → 500 → wait 500ms → Attempt 2 → 500 → wait 500ms → Attempt 3 → 200 ✓
+      # -----------------------------------------------------------------------
+      fixed-retry:
+        max-attempts: 4
+        wait-duration: 500ms
+        retry-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+
+      # -----------------------------------------------------------------------
+      # EXPONENTIAL BACKOFF — wait doubles after each failure
+      #
+      # Timeline (failTimes=2):
+      #   Attempt 1 → 500 → wait 1s → Attempt 2 → 500 → wait 2s → Attempt 3 → 200 ✓
+      #   (if all fail: Attempt 4 would wait 4s)
+      # -----------------------------------------------------------------------
+      exponential-retry:
+        max-attempts: 4
+        wait-duration: 1s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+
+      # -----------------------------------------------------------------------
+      # EXPONENTIAL + JITTER — randomised wait within an exponential window
+      #
+      # randomized-wait-factor=0.5 → actual wait = base × (1 ± 0.5)
+      #   → uniformly random in [base×0.5, base×1.5]
+      #
+      # Timeline (failTimes=2):
+      #   Attempt 1 → 500 → wait ~0.5–1.5s → Attempt 2 → 500 → wait ~1–3s → Attempt 3 → 200 ✓
+      #
+      # Why jitter? Without it, all clients retry at the same instant →
+      # thundering herd. Jitter spreads them across a window.
+      # -----------------------------------------------------------------------
+      jitter-retry:
+        max-attempts: 4
+        wait-duration: 1s
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        randomized-wait-factor: 0.5
+        retry-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+
+# Expose retry metrics via Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,retries
+  health:
+    retries:
+      enabled: true
+
+logging:
+  level:
+    com.example.orderservice: DEBUG

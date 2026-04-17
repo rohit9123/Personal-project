@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="leetcode-daily" />
+        <module name="inventory-service" />
+        <module name="payment-service" />
+        <module name="inventory-service (2)" />
+        <module name="order-service" />
+        <module name="eureka-server" />
+        <module name="inventory-service (1)" />
+        <module name="order-service (1)" />
+        <module name="order-service (2)" />
+      </profile>
+    </annotationProcessing>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="eureka-server" options="-parameters" />
+      <module name="inventory-service" options="-parameters" />
+      <module name="inventory-service (1)" options="-parameters" />
+      <module name="inventory-service (2)" options="-parameters" />
+      <module name="leetcode-daily" options="-parameters" />
+      <module name="order-service" options="-parameters" />
+      <module name="order-service (1)" options="-parameters" />
+      <module name="order-service (2)" options="-parameters" />
+      <module name="payment-service" options="-parameters" />
+    </option>
+  </component>
+</project>

@@ -1,0 +1,71 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: order-service
+
+inventory:
+  service:
+    url: http://localhost:8082
+
+# ---------------------------------------------------------------------------
+# Resilience4j Circuit Breaker configuration
+#
+# Named instance "inventory-cb" — bound to @CircuitBreaker(name="inventory-cb")
+# in InventoryClient.java.
+#
+# SLIDING WINDOW
+#   The CB counts outcomes (success/failure) in a sliding window of the last
+#   N calls (COUNT_BASED) or the last N seconds (TIME_BASED).
+#   COUNT_BASED is easier to reason about and demo.
+#
+# FAILURE RATE THRESHOLD
+#   Once the window is full, if failedCalls/totalCalls >= threshold, the
+#   circuit opens. Here: 3 failures in 5 calls (60%) trips it.
+#
+# WAIT DURATION IN OPEN STATE
+#   How long the circuit stays OPEN before moving to HALF_OPEN.
+#   10s here so the demo doesn't require long waits.
+#
+# HALF_OPEN PROBE CALLS
+#   In HALF_OPEN, exactly 2 calls are let through to test recovery.
+#   If both succeed → CLOSED. If either fails → back to OPEN.
+# ---------------------------------------------------------------------------
+resilience4j:
+  circuitbreaker:
+    instances:
+      inventory-cb:
+        # ---- Sliding window -----------------------------------------------
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 5            # evaluate the last 5 calls
+
+        # ---- Trip threshold -----------------------------------------------
+        failure-rate-threshold: 60        # open if >= 60% of calls fail (3/5)
+        minimum-number-of-calls: 5        # don't evaluate until window is full
+
+        # ---- Open state ---------------------------------------------------
+        wait-duration-in-open-state: 10s  # stay OPEN for 10s, then → HALF_OPEN
+        automatic-transition-from-open-to-half-open-enabled: true
+
+        # ---- Half-open state ----------------------------------------------
+        permitted-number-of-calls-in-half-open-state: 2  # 2 probe calls
+
+        # ---- What counts as a failure? ------------------------------------
+        record-exceptions:
+          - org.springframework.web.client.HttpServerErrorException
+          - org.springframework.web.client.ResourceAccessException
+
+# Expose circuit breaker metrics via Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,circuitbreakers,circuitbreakerevents
+  health:
+    circuitbreakers:
+      enabled: true
+
+logging:
+  level:
+    com.example.orderservice: DEBUG
