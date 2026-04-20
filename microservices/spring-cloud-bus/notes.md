@@ -31,11 +31,12 @@ POST /actuator/busrefresh (on ANY service)
         ▼
   RabbitMQ: springCloudBus exchange
         │
-  ┌─────┴──────┬──────────────┐
-  ▼            ▼              ▼
-config-server  order-service  inventory-service
-(re-reads)    (@RefreshScope  (@RefreshScope
-               re-created)    re-created)
+  ┌─────┴──────────────┐
+  ▼                    ▼
+order-service     inventory-service
+(@RefreshScope    (@RefreshScope
+ re-fetches from   re-fetches from
+ config-server)    config-server)
 ```
 
 **Custom Domain Event Flow:**
@@ -136,8 +137,8 @@ Every service subscribes to the same RabbitMQ exchange (`springCloudBus`) at sta
 **Q: What's the difference between Spring Cloud Bus events and regular Kafka topics?**
 Bus events are transient broadcasts — fire-and-forget, no replay. Kafka topics persist messages and support consumer groups/replay. Use Bus for operational signals (config refresh, cache invalidation) and Kafka for durable domain events that need ordering guarantees or replay.
 
-**Q: Why must `OrderCreatedEvent` be in the same package in both services?**
-Spring Cloud Bus deserializes incoming JSON messages using the simple class name embedded in the message type header. If the class is registered via `@RemoteApplicationEventScan`, it deserializes it. If the class can't be found by scanning, deserialization fails.
+**Q: Why must both services declare `@RemoteApplicationEventScan`, and must the package be the same?**
+Spring Cloud Bus uses the **simple class name** (e.g. `OrderCreatedEvent`) — not the fully-qualified name — in the message type header. `@RemoteApplicationEventScan` tells Jackson which packages to scan when deserializing that class name. The package can differ between services; what must match is the simple class name. Without `@RemoteApplicationEventScan` on the receiving service, the incoming message cannot be deserialized and no `@EventListener` fires.
 
 **Q: Can you use Kafka instead of RabbitMQ?**
 Yes — replace `spring-cloud-starter-bus-amqp` with `spring-cloud-starter-bus-kafka`. No code changes needed; Bus is binder-agnostic.
