@@ -76,5 +76,5 @@ public class OrderController {
     }
 
     // Record for the request body — replaces a separate DTO class
-    public record OrderRequest(String orderId, String product, int quantity) {}
+    record OrderRequest(String orderId, String product, int quantity) {}
 }

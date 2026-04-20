@@ -22,7 +22,8 @@ management:
   endpoints:
     web:
       exposure:
-        include: "*"   # exposes /actuator/busrefresh — POST here to refresh ALL connected services
+        include: "*"   # demo only: exposes ALL actuator endpoints including /actuator/busrefresh.
+                       # In production, restrict to: health,info,busrefresh
   endpoint:
     health:
       show-details: always
