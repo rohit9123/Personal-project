@@ -1,0 +1,3 @@
+order:
+  greeting: "Hello from Order Service — loaded from Config Server"
+  max-items: 50

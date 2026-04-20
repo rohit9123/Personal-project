@@ -1,0 +1,3 @@
+inventory:
+  greeting: "Hello from Inventory Service — loaded from Config Server"
+  stock-threshold: 10
