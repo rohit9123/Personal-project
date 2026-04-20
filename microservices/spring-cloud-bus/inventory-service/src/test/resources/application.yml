@@ -1,6 +1,8 @@
 # Overrides spring.config.import at the config-data phase so the context loads
 # without needing a running Config Server or RabbitMQ.
 spring:
+  application:
+    name: inventory-service
   cloud:
     config:
       enabled: false

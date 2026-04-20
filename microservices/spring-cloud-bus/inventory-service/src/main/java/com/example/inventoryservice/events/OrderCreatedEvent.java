@@ -13,6 +13,19 @@ import org.springframework.cloud.bus.event.RemoteApplicationEvent;
  * arrives, Bus scans packages registered via @RemoteApplicationEventScan for a
  * class with that simple name. The package can differ between services; only the
  * simple name must match.
+ *
+ * Rules for RemoteApplicationEvent subclasses:
+ *   1. Must have a no-arg constructor (Jackson deserialization).
+ *   2. The receiving service must have a class with the same SIMPLE name
+ *      (e.g. OrderCreatedEvent) registered via @RemoteApplicationEventScan.
+ *      The package can differ between services — Bus uses the simple class
+ *      name (not the FQN) in the message type header.
+ *   3. Both services must declare @RemoteApplicationEventScan on their App class.
+ *
+ * destinationService patterns:
+ *   "**"                    → broadcast to all bus-connected services
+ *   "inventory-service:**"  → all instances of inventory-service only
+ *   "inventory-service:0"   → specific instance (index 0)
  */
 public class OrderCreatedEvent extends RemoteApplicationEvent {
 

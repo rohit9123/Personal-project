@@ -13,7 +13,7 @@ spring:
     password: ${RABBITMQ_PASSWORD:guest}
 
 server:
-  port: 9082
+  port: 9082   # intentionally different from service-discovery-eureka where inventory=9081, order=9082
 
 management:
   endpoints:
