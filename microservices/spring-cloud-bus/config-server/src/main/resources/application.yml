@@ -1,0 +1,39 @@
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: native          # 'native' = serve config files from the local filesystem
+                            # The config-repo/ directory has no .git, so we MUST use native.
+                            # Without this profile, Config Server tries to clone a Git repo
+                            # and fails with an unhelpful error.
+  cloud:
+    config:
+      server:
+        native:
+          # Run 'mvn spring-boot:run' from inside config-server/ —
+          # ../config-repo then resolves to spring-cloud-bus/config-repo/
+          # which is where order-service.yml and inventory-service.yml live.
+          #
+          # If you run from the project root instead, use:
+          #   search-locations: file:config-repo
+          search-locations: file:../config-repo
+    bus:
+      enabled: true          # explicit — already true by default when starter is present
+
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+
+server:
+  port: 8888                 # convention: Config Server always on 8888
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always

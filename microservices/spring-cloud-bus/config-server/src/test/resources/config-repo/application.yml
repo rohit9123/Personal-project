@@ -1,0 +1,3 @@
+# Stub config file for context load tests — not used in production
+app:
+  test: true
