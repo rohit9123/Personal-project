@@ -1,5 +1,6 @@
 package com.example.orderservice.events;
 
+import org.springframework.cloud.bus.event.PathDestinationFactory;
 import org.springframework.cloud.bus.event.RemoteApplicationEvent;
 
 /**
@@ -19,6 +20,11 @@ import org.springframework.cloud.bus.event.RemoteApplicationEvent;
  *   "**"                    → broadcast to all bus-connected services
  *   "inventory-service:**"  → all instances of inventory-service only
  *   "inventory-service:0"   → specific instance (index 0)
+ *
+ * Note: The {@code super(source, originService, destinationService)} String
+ * overload of {@link RemoteApplicationEvent} is deprecated in Spring Cloud Bus
+ * 4.x. This constructor uses the non-deprecated
+ * {@link PathDestinationFactory#getDestination(String)} overload instead.
  */
 public class OrderCreatedEvent extends RemoteApplicationEvent {
 
@@ -35,7 +41,8 @@ public class OrderCreatedEvent extends RemoteApplicationEvent {
                              String orderId,
                              String product,
                              int    quantity) {
-        super(source, originService, destinationService);
+        super(source, originService,
+              new PathDestinationFactory().getDestination(destinationService));
         this.orderId  = orderId;
         this.product  = product;
         this.quantity = quantity;

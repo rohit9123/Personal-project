@@ -75,7 +75,10 @@ public class OrderCreatedEvent extends RemoteApplicationEvent {
     public OrderCreatedEvent(Object source, String originService,
                              String destinationService,
                              String orderId, String product, int quantity) {
-        super(source, originService, destinationService);
+        // Use PathDestinationFactory to avoid the deprecated String overload
+        // in Spring Cloud Bus 4.x (super(source, originService, String)).
+        super(source, originService,
+              new PathDestinationFactory().getDestination(destinationService));
         this.orderId = orderId;
         this.product = product;
         this.quantity = quantity;
@@ -93,8 +96,13 @@ public class OrderServiceApp { ... }
 
 **4. Publish the event (order-service):**
 ```java
-@Autowired ApplicationEventPublisher publisher;
-@Autowired BusProperties busProperties;
+private final ApplicationEventPublisher publisher;
+private final BusProperties busProperties;
+
+public OrderController(ApplicationEventPublisher publisher, BusProperties busProperties) {
+    this.publisher     = publisher;
+    this.busProperties = busProperties;
+}
 
 // Broadcast to ALL services:
 publisher.publishEvent(new OrderCreatedEvent(
@@ -145,3 +153,6 @@ Yes — replace `spring-cloud-starter-bus-amqp` with `spring-cloud-starter-bus-k
 
 **Q: What happens if RabbitMQ is down?**
 Services fail to start if Bus is enabled and the broker is unreachable. Use `spring.cloud.bus.enabled: false` in test profiles to avoid this.
+
+**Q: Is the `RemoteApplicationEvent(source, originService, String)` constructor safe to use?**
+No — the String-destination overload is deprecated in Spring Cloud Bus 4.x. Use `PathDestinationFactory` instead: `super(source, originService, new PathDestinationFactory().getDestination(destinationService))`. `PathDestinationFactory` converts the glob string (e.g. `"**"` or `"inventory-service:**"`) into the `Destination` type that the non-deprecated constructor accepts.

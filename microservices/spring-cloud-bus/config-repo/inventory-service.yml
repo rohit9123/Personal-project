@@ -1,6 +1,11 @@
 # Properties served to 'inventory-service' by the Config Server.
 #
 # Verify with: GET http://localhost:8888/inventory-service/default
+# (start config-server first, then hit this URL to see what gets served)
+#
+# Edit 'greeting' here, then POST to any service's /actuator/busrefresh
+# and watch all connected services pick up the new value without restart.
+# Then verify: GET http://localhost:9082/inventory/config
 
 inventory:
   greeting: "Hello from Inventory Service — loaded from Config Server"
