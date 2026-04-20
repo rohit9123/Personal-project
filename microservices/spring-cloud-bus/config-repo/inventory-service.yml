@@ -1,3 +1,7 @@
+# Properties served to 'inventory-service' by the Config Server.
+#
+# Verify with: GET http://localhost:8888/inventory-service/default
+
 inventory:
   greeting: "Hello from Inventory Service — loaded from Config Server"
   stock-threshold: 10

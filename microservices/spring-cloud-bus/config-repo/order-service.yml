@@ -1,3 +1,12 @@
+# Properties served to 'order-service' by the Config Server.
+#
+# Verify with: GET http://localhost:8888/order-service/default
+# (start config-server first, then hit this URL to see what gets served)
+#
+# These values are what change when you demo /actuator/busrefresh —
+# edit 'greeting' here, then POST to any service's /actuator/busrefresh
+# and watch all connected services pick up the new value without restart.
+
 order:
   greeting: "Hello from Order Service — loaded from Config Server"
   max-items: 50
