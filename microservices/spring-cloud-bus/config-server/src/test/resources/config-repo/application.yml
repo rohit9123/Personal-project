@@ -1,3 +1,5 @@
-# Stub config file for context load tests — not used in production
+# In Spring Cloud Config, 'application.yml' is the GLOBAL fallback served to ALL clients.
+# 'order-service.yml' is served only to the service named 'order-service'.
+# This stub exists so Config Server has a valid search-location during context load tests.
 app:
   test: true

@@ -10,12 +10,11 @@ spring:
     config:
       server:
         native:
-          # Run 'mvn spring-boot:run' from inside config-server/ —
-          # ../config-repo then resolves to spring-cloud-bus/config-repo/
-          # which is where order-service.yml and inventory-service.yml live.
-          #
-          # If you run from the project root instead, use:
-          #   search-locations: file:config-repo
+          # IMPORTANT: file: paths are relative to the JVM working directory (CWD),
+          # NOT the JAR location. Run 'mvn spring-boot:run' from inside config-server/
+          # so that ../config-repo resolves to spring-cloud-bus/config-repo/.
+          # If running the packaged JAR: java -jar target/config-server-*.jar
+          # from inside config-server/, the same path works.
           search-locations: file:../config-repo
     bus:
       enabled: true          # explicit — already true by default when starter is present
@@ -24,7 +23,9 @@ spring:
     host: localhost
     port: 5672
     username: guest
-    password: guest
+    password: ${RABBITMQ_PASSWORD:guest}
+    # In production: set RABBITMQ_PASSWORD env var or use a secrets manager.
+    # 'guest' is the RabbitMQ default — fine for local dev, never for production.
 
 server:
   port: 8888                 # convention: Config Server always on 8888
@@ -33,7 +34,8 @@ management:
   endpoints:
     web:
       exposure:
-        include: "*"
+        include: "*"   # exposes /actuator/busrefresh — the key endpoint for this demo.
+                       # In production, lock this down: include: "health,info,busrefresh"
   endpoint:
     health:
       show-details: always
