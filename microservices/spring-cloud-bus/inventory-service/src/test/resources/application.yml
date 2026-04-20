@@ -1,0 +1,18 @@
+# Overrides spring.config.import at the config-data phase so the context loads
+# without needing a running Config Server or RabbitMQ.
+spring:
+  cloud:
+    config:
+      enabled: false
+    bus:
+      enabled: false
+  config:
+    import: "optional:configserver:"
+
+# Properties normally served by Config Server
+inventory:
+  greeting: "test greeting"
+  stock-threshold: 5
+
+server:
+  port: 0

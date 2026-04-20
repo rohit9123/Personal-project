@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: inventory-service      # Config Server looks up 'inventory-service.yml' using this name
+  config:
+    import: "configserver:http://localhost:8888"
+  cloud:
+    bus:
+      enabled: true
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: ${RABBITMQ_PASSWORD:guest}
+
+server:
+  port: 9082
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"   # demo only: exposes ALL actuator endpoints including /actuator/busrefresh.
+                       # In production, restrict to: health,info,busrefresh
+  endpoint:
+    health:
+      show-details: always
