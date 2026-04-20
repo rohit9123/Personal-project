@@ -1,0 +1,27 @@
+# Test-scope application.yml — overrides src/main/resources/application.yml for tests.
+# This file is processed during the config data phase (before @TestPropertySource),
+# which is the only reliable way to override spring.config.import in Spring Boot 3.x.
+spring:
+  application:
+    name: order-service
+  config:
+    import: "optional:configserver:"   # suppress mandatory configserver import
+  cloud:
+    config:
+      enabled: false
+    bus:
+      enabled: false
+
+server:
+  port: 0    # random port — tests don't need a fixed port
+
+# Provide properties the app expects (normally served by Config Server)
+order:
+  greeting: "test greeting"
+  max-items: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health"

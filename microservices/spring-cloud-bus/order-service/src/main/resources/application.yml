@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: order-service          # Config Server looks up 'order-service.yml' using this name
+  config:
+    import: "configserver:http://localhost:8888"
+    # At startup, Spring Boot fetches all properties from the Config Server.
+    # The local application.yml only needs the app name and server URL —
+    # everything else (order.greeting, order.max-items) lives in config-repo/.
+  cloud:
+    bus:
+      enabled: true
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: ${RABBITMQ_PASSWORD:guest}
+
+server:
+  port: 9081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"   # exposes /actuator/busrefresh — POST here to refresh ALL connected services
+  endpoint:
+    health:
+      show-details: always
