@@ -21,7 +21,26 @@
 
     <properties>
         <java.version>17</java.version>
+        <otel.version>1.32.0</otel.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!--
+                Import the OTel BOM so that opentelemetry-exporter-otlp and all
+                other OTel artifacts resolve to a consistent, aligned version.
+                Pin to the same version that micrometer-tracing-bridge-otel uses
+                (Spring Boot 3.2.5 → micrometer-tracing 1.2.5 → OTel 1.32.0).
+            -->
+            <dependency>
+                <groupId>io.opentelemetry</groupId>
+                <artifactId>opentelemetry-bom</artifactId>
+                <version>${otel.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <modules>
         <module>inventory-service</module>
