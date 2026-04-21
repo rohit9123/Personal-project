@@ -1,0 +1,45 @@
+version: '3.8'
+
+# ── Distributed Tracing Infrastructure ────────────────────────────────────────
+#
+# Data flow:
+#   Spring services
+#     → OTel Collector  (OTLP HTTP :4318)
+#     → Grafana Tempo   (OTLP gRPC :4317, internal)
+#     → Grafana UI      (query Tempo at :3200)
+#
+# Services send to localhost:4318. The Collector forwards to tempo:4317
+# (Docker DNS resolves "tempo" inside the compose network).
+
+services:
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.96.0
+    volumes:
+      - ./otel-collector-config.yml:/etc/otelcol/config.yml
+    command: ["--config=/etc/otelcol/config.yml"]
+    ports:
+      - "4317:4317"   # OTLP gRPC  (if you prefer gRPC export)
+      - "4318:4318"   # OTLP HTTP  (default used by Spring Boot OtlpAutoConfig)
+    depends_on:
+      - tempo
+
+  tempo:
+    image: grafana/tempo:2.4.0
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./tempo-config.yml:/etc/tempo/tempo.yml
+    ports:
+      - "3200:3200"   # Tempo HTTP API — Grafana queries traces here
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+    depends_on:
+      - tempo

@@ -1,0 +1,24 @@
+# OTel Collector pipeline:
+#   receivers: accept OTLP from Spring services (gRPC + HTTP)
+#   exporters: forward all spans to Tempo via OTLP gRPC
+#   service:   wire them into a traces pipeline
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318   # Spring Boot OtlpAutoConfiguration posts here
+
+exporters:
+  otlp:
+    endpoint: tempo:4317          # Tempo's OTLP gRPC receiver (compose DNS)
+    tls:
+      insecure: true              # no TLS in local dev
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp]

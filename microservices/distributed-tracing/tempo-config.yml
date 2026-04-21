@@ -1,0 +1,17 @@
+server:
+  http_listen_port: 3200   # Grafana queries Tempo on this port
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317   # OTel Collector pushes spans here
+
+storage:
+  trace:
+    backend: local              # local disk — fine for demo; use GCS/S3 in prod
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal
