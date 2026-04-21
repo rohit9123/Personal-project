@@ -1,0 +1,23 @@
+server:
+  port: 9081   # override to run a second instance: --server.port=9083
+
+spring:
+  application:
+    name: inventory-service   # logical name — both instances register under this name
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    # Make each instance uniquely identifiable in the Eureka dashboard
+    instance-id: ${spring.application.name}:${server.port}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

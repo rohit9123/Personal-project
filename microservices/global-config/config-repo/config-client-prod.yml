@@ -1,0 +1,17 @@
+# Prod overrides — merged on top of config-client.yml when profile=prod.
+# Config Server serves this at: GET http://localhost:8888/config-client/prod
+
+app:
+  name: "Config Demo [PROD]"
+  max-retries: 5
+  mail:
+    host: smtp.prod.example.com
+    username: ops@example.com
+
+feature:
+  dark-mode: false
+  beta: false
+
+logging:
+  level:
+    com.example: WARN

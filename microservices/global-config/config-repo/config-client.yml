@@ -1,0 +1,16 @@
+# Base config for any service named 'config-client' (all profiles).
+# Config Server serves this at: GET http://localhost:8888/config-client/default
+# Edit this file freely — no server restart needed, changes take effect immediately.
+
+app:
+  name: "Config Demo"
+  version: "1.0.0"
+  max-retries: 3
+  mail:
+    host: smtp.default.example.com
+    port: 587
+    username: admin@example.com
+
+feature:
+  dark-mode: false
+  beta: false

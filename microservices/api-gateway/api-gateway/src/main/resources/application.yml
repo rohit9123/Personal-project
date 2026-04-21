@@ -1,0 +1,136 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      # ──────────────────────────────────────────────────────────────────────────
+      # ROUTES
+      # Each route: match predicate → apply filters in order → forward request
+      #
+      # GatewayFilter execution order within a route:
+      #   Filters listed FIRST wrap filters listed LATER in the reactive chain.
+      #   So CircuitBreaker (listed before Retry) is the OUTER layer:
+      #
+      #   Client → CircuitBreaker → Retry → downstream
+      #
+      #   This is intentional: Retry fires multiple attempts inside a SINGLE
+      #   CB "call". The CB only sees the final outcome after all retries are
+      #   exhausted. If we swapped the order (Retry → CB), each individual retry
+      #   would count as a separate CB failure, tripping the CB prematurely.
+      # ──────────────────────────────────────────────────────────────────────────
+      routes:
+
+        # ── Route 1: /api/inventory/** → inventory-service ────────────────────
+        - id: inventory-route
+          uri: lb://inventory-service
+          predicates:
+            - Path=/api/inventory/**
+          filters:
+            # 1. StripPrefix: remove /api before forwarding
+            #    /api/inventory/item-1  →  /inventory/item-1
+            - StripPrefix=1
+
+            # 2. CircuitBreaker (OUTER): wraps Retry + downstream call.
+            #    When the circuit is OPEN, skips Retry entirely and immediately
+            #    forwards to the fallback URI — no network hop, microseconds.
+            - name: CircuitBreaker
+              args:
+                name: inventory-cb           # maps to resilience4j.circuitbreaker.instances.inventory-cb
+                fallbackUri: forward:/fallback/inventory
+
+            # 3. Retry (INNER): retries failed calls before the CB sees the result.
+            #    Only retries on transient HTTP errors (5xx) for idempotent methods (GET).
+            #    Exponential backoff: 100ms → 200ms → 400ms (factor=2, max=1000ms).
+            - name: Retry
+              args:
+                retries: 3
+                statuses: INTERNAL_SERVER_ERROR,BAD_GATEWAY,SERVICE_UNAVAILABLE
+                methods: GET
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: false
+
+        # ── Route 2: /api/orders/** → order-service ───────────────────────────
+        - id: order-route
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/**
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: order-cb
+                fallbackUri: forward:/fallback/orders
+            - name: Retry
+              args:
+                retries: 3
+                statuses: INTERNAL_SERVER_ERROR,BAD_GATEWAY,SERVICE_UNAVAILABLE
+                methods: GET
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 1000ms
+                  factor: 2
+                  basedOnPreviousValue: false
+
+# ── Resilience4j — Circuit Breaker configuration ──────────────────────────────
+#
+# These values map to the CB instances named in the routes above.
+# Same semantics as the standalone CB demo (circuit-breaker module):
+#   sliding-window-size: evaluate last N calls
+#   failure-rate-threshold: open circuit if failure% >= this
+#   wait-duration-in-open-state: how long to stay OPEN before probing
+#   permitted-calls-in-half-open: number of probe calls allowed in HALF_OPEN
+#   minimum-number-of-calls: don't evaluate failure rate until this many calls
+resilience4j:
+  circuitbreaker:
+    instances:
+      inventory-cb:
+        sliding-window-size: 5
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+        minimum-number-of-calls: 5
+        register-health-indicator: true
+      order-cb:
+        sliding-window-size: 5
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+        minimum-number-of-calls: 5
+        register-health-indicator: true
+
+# ── JWT configuration ─────────────────────────────────────────────────────────
+#
+# Secret used by both JwtAuthFilter (validation) and TokenController (signing).
+# Must be >= 32 bytes (256 bits) for HS256.
+# In production: load from environment variable or secrets manager, NEVER commit.
+app:
+  jwt:
+    secret: "MyDemoSecretKeyForJWTSigningMustBe32CharsLong!!"
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: gateway,health,info,circuitbreakers,circuitbreakerevents
+  endpoint:
+    gateway:
+      enabled: true
+    health:
+      show-details: always   # shows CB state (UP/DEGRADED) in health response

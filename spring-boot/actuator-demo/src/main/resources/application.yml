@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: actuator-demo
+
+server:
+  port: 8080
+
+# ── Static info shown at /actuator/info ───────────────────────────────────────
+# Any key under "info:" is served by the info endpoint automatically.
+# Combine with AppInfoContributor.java for dynamic values (JVM stats, etc.).
+info:
+  app:
+    name: "Actuator Demo"
+    version: "1.0.0"
+    description: "Spring Boot Actuator walkthrough"
+  contact:
+    docs: "http://localhost:8080/actuator"
+
+# ── Actuator configuration ────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      base-path: /actuator          # default — all endpoints under /actuator/*
+      exposure:
+        include: "*"                # expose everything (restrict in prod — see README)
+        # Production-safe alternative:
+        # include: health, info, metrics, loggers
+
+  endpoint:
+    health:
+      show-details: always          # show component details (diskSpace, paymentService, etc.)
+      show-components: always
+      # Kubernetes liveness/readiness probes — see README for explanation
+      probes:
+        enabled: true
+
+    # Show actual property values (not "******") — useful for debugging config issues
+    env:
+      show-values: always
+
+    # How long to cache the response for expensive endpoints (metrics, beans)
+    beans:
+      cache:
+        time-to-live: 10s
+    metrics:
+      cache:
+        time-to-live: 5s
+
+  # Health groups — lets you expose separate endpoints for different consumers
+  # /actuator/health/liveness  → used by K8s liveness probe
+  # /actuator/health/readiness → used by K8s readiness probe
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+
+logging:
+  level:
+    com.example: INFO               # change to DEBUG at runtime via /actuator/loggers

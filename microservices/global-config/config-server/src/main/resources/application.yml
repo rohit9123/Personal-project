@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: native          # 'native' = serve config files from the filesystem
+                            # alternative: 'git' (reads from a git repo URL)
+  cloud:
+    config:
+      server:
+        native:
+          # Points to config-repo/ which sits OUTSIDE this server's jar.
+          # ../config-repo resolves relative to wherever 'mvn spring-boot:run' is run from
+          # (i.e. from inside config-server/, one level up is global-config/).
+          #
+          # The server reads files fresh on every request — no restart needed
+          # when you edit files in config-repo/. Just POST /actuator/refresh
+          # on the client and it picks up the new values immediately.
+          #
+          # In production this would be: file:/etc/config  or  a git URI.
+          search-locations: file:../config-repo
+
+server:
+  port: 8888                # convention: config server always on 8888
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always

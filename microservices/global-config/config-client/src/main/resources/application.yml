@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: config-client       # Config Server looks up "config-client.yml"
+                              # and "config-client-{profile}.yml" using this name
+  profiles:
+    active: dev               # change to 'prod' to load config-client-prod.yml
+  config:
+    import: "configserver:http://localhost:8888"
+    # At startup Spring Boot fetches ALL properties from the Config Server.
+    # The local application.yml only needs the app name and the server URL —
+    # everything else (app.*, feature.*, logging.*) lives on the server side.
+
+server:
+  port: 8080
+
+# Actuator — expose all endpoints including /actuator/refresh (POST)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+    env:
+      show-values: always     # show actual values (not "******") in /actuator/env

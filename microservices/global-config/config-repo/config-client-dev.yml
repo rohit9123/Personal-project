@@ -1,0 +1,18 @@
+# Dev overrides — merged on top of config-client.yml when profile=dev.
+# Config Server serves this at: GET http://localhost:8888/config-client/dev
+# Try: edit this file → POST /actuator/refresh on client → values change with no restart.
+
+app:
+  name: "Config Demo [DEV]"
+  max-retries: 1
+  mail:
+    host: smtp.dev.example.com
+    username: dev@example.com
+
+feature:
+  dark-mode: true
+  beta: true
+
+logging:
+  level:
+    com.example: DEBUG
