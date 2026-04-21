@@ -9,7 +9,7 @@ stored in Grafana Tempo, and visualised in Grafana.
 | File | Description |
 |------|-------------|
 | [notes.md](notes.md) | Concept reference — What / Why / How / Interview Angles |
-| [pom.xml](pom.xml) | Parent POM (Spring Boot 3.2.5, two modules) |
+| [pom.xml](pom.xml) | Parent POM (Spring Boot 3.2.5, OTel BOM 1.32.0, two modules) |
 | [order-service/](order-service/) | Receives orders, calls inventory (port 9081) |
 | [inventory-service/](inventory-service/) | Returns stock info (port 9082) |
 | [docker-compose.yml](docker-compose.yml) | OTel Collector + Grafana Tempo + Grafana |

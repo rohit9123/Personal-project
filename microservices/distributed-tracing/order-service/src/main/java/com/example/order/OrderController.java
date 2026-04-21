@@ -36,6 +36,11 @@ public class OrderController {
         log.info("Processing order orderId={}", orderId);
         // restTemplate carries the traceparent header automatically —
         // inventory-service will create a child span under this trace.
+        // NOTE: URL is hardcoded to localhost for demo clarity.
+        // In a multi-environment setup, extract this to a @Value property
+        // in application.yml (e.g. inventory.base-url=http://localhost:9082).
+        // This will also fail if order-service is containerized — services
+        // must both run on the host for localhost resolution to work.
         String stock = restTemplate.getForObject(
             "http://localhost:9082/inventory/" + orderId, String.class);
         return "Order #" + orderId + " confirmed. Stock: " + stock;

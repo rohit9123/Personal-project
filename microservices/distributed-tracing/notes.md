@@ -43,7 +43,7 @@ Spring Boot auto-configures `W3CTraceContextPropagator`. Every outbound
 ```
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
              ^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^ ^^
-             version   trace-id (128-bit hex)    parent-span-id (spec: parent-id)   flags
+             version   trace-id (128-bit hex)    parent-id (W3C spec name)   flags
 ```
 
 The downstream service extracts `traceparent`, continues the same trace, and
@@ -133,3 +133,12 @@ sampling, batching + retry, attribute enrichment (add k8s pod/namespace labels),
 and decoupling (swap the backend without redeploying services). In production
 Kubernetes environments the Collector runs as a DaemonSet sidecar, so services
 just send to `localhost`.
+
+**Q: What happens if a load balancer or API gateway strips the `traceparent` header?**
+A: The downstream service sees no incoming trace context, so it starts a brand-new root
+span with a fresh trace ID. This silently breaks the trace chain — the upstream and
+downstream spans become two unrelated traces in Grafana Tempo. Mitigation: configure
+the gateway to pass through `traceparent` (and `tracestate`) headers. Spring Cloud
+Gateway preserves them by default; NGINX requires an explicit `proxy_set_header
+traceparent $http_traceparent;` directive. This is why gateway configuration is the
+first thing to check when traces appear truncated in Tempo.

@@ -20,6 +20,8 @@ class OrderControllerTest {
 
     // RestTemplate is defined in OrderServiceApp, not the controller — mock it
     // so the controller's constructor can be satisfied without a real HTTP call.
+    // NOTE: @MockBean is deprecated in Spring Boot 3.4+ — use
+    // @org.springframework.test.context.bean.override.mockito.MockitoBean instead.
     @MockBean
     private RestTemplate restTemplate;
 
