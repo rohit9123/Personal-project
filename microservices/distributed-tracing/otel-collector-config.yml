@@ -1,7 +1,8 @@
 # OTel Collector pipeline:
-#   receivers: accept OTLP from Spring services (gRPC + HTTP)
-#   exporters: forward all spans to Tempo via OTLP gRPC
-#   service:   wire them into a traces pipeline
+#   receivers:  accept OTLP from Spring services (gRPC + HTTP)
+#   processors: batch spans before forwarding (reduces per-span TCP overhead)
+#   exporters:  forward to Tempo via OTLP gRPC
+#   service:    wire them into a traces pipeline
 
 receivers:
   otlp:
@@ -10,6 +11,14 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318   # Spring Boot OtlpAutoConfiguration posts here
+
+processors:
+  batch:
+    # Buffer spans for up to 200ms or 512 spans before forwarding.
+    # Reduces per-span TCP overhead to Tempo. This processor is the
+    # canonical first addition to any real-world OTel Collector pipeline.
+    timeout: 200ms
+    send_batch_size: 512
 
 exporters:
   otlp:
@@ -21,4 +30,5 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
+      processors: [batch]
       exporters: [otlp]

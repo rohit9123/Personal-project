@@ -15,3 +15,10 @@ storage:
       path: /var/tempo/traces
     wal:
       path: /var/tempo/wal
+
+# NOTE: without a compactor block, Tempo never expires old traces.
+# For a long-running demo add:
+#
+#   compactor:
+#     compaction:
+#       block_retention: 24h   # delete traces older than 24 hours

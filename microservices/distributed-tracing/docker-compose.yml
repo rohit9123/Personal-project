@@ -1,15 +1,17 @@
+# 'version' is ignored by Docker Compose v2+ but kept for compatibility
+# with older tooling. Safe to remove if you're on docker compose v2.
 version: '3.8'
 
 # ── Distributed Tracing Infrastructure ────────────────────────────────────────
 #
 # Data flow:
 #   Spring services
-#     → OTel Collector  (OTLP HTTP :4318)
-#     → Grafana Tempo   (OTLP gRPC :4317, internal)
-#     → Grafana UI      (query Tempo at :3200)
+#     → OTel Collector  (OTLP HTTP :4318, host-exposed)
+#     → Grafana Tempo   (OTLP gRPC :4317, internal Docker network only)
+#     → Grafana UI      (queries Tempo HTTP at :3200)
 #
 # Services send to localhost:4318. The Collector forwards to tempo:4317
-# (Docker DNS resolves "tempo" inside the compose network).
+# (Docker Compose DNS resolves "tempo" inside the shared bridge network).
 
 services:
 
@@ -19,8 +21,8 @@ services:
       - ./otel-collector-config.yml:/etc/otelcol/config.yml
     command: ["--config=/etc/otelcol/config.yml"]
     ports:
-      - "4317:4317"   # OTLP gRPC  (if you prefer gRPC export)
-      - "4318:4318"   # OTLP HTTP  (default used by Spring Boot OtlpAutoConfig)
+      - "4317:4317"   # OTLP gRPC  (for gRPC-based exporters)
+      - "4318:4318"   # OTLP HTTP  (default for Spring Boot OtlpAutoConfig)
     depends_on:
       - tempo
 
@@ -29,6 +31,9 @@ services:
     command: ["-config.file=/etc/tempo/tempo.yml"]
     volumes:
       - ./tempo-config.yml:/etc/tempo/tempo.yml
+    # Port 4317 (OTLP gRPC) is NOT published to the host — it is only
+    # reachable by otel-collector via the internal Docker Compose network.
+    # Publishing it would expose the Tempo ingest port unnecessarily.
     ports:
       - "3200:3200"   # Tempo HTTP API — Grafana queries traces here
 
@@ -41,5 +46,7 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     volumes:
       - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+    # depends_on tempo only — Grafana queries Tempo's HTTP API directly.
+    # It does not talk to otel-collector, so no dependency on it here.
     depends_on:
       - tempo
