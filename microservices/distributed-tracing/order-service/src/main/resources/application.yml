@@ -1,0 +1,18 @@
+server:
+  port: 9081
+
+spring:
+  application:
+    name: order-service
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %5p [${spring.application.name},%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
