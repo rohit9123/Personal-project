@@ -6,6 +6,14 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Inventory endpoint — the downstream service in the distributed-tracing demo.
+ *
+ * <p>Instrumented via {@code micrometer-tracing-bridge-otel}: Micrometer's {@code Tracer}
+ * creates a child span for each inbound request, adding it to the active trace propagated
+ * by order-service via the W3C {@code traceparent} header. The span's traceId and spanId
+ * are injected into MDC, visible in log output via the configured console pattern.
+ */
 @RestController
 public class InventoryController {
 

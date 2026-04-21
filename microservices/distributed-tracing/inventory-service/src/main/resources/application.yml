@@ -13,7 +13,8 @@ management:
     tracing:
       endpoint: http://localhost:4318/v1/traces   # OTel Collector HTTP receiver
 
-# Include traceId and spanId in every log line for log-to-trace correlation
+# Include traceId and spanId in every log line for log-to-trace correlation.
+# logging.pattern.console rewrites the entire line — unambiguous for demos.
 logging:
   pattern:
-    level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-}]"
+    console: "%d{HH:mm:ss.SSS} %5p [${spring.application.name},%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
