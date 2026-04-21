@@ -397,6 +397,7 @@ Leader updates remote LEO tracking for this follower
 If follower LEO ≥ (HW - lag threshold) → follower stays in ISR
 ```
 
+
 ### Interview Angles
 - **What is the difference between LEO and HW?** LEO (Log End Offset) = the next offset to be written on a replica (its local tip). HW = the highest offset that has been replicated to all ISR members. Consumers only see up to HW. LEO ≥ HW always.
 - **Why can consumers only read up to HW?** If a consumer read beyond HW and then the leader crashed before followers replicated those records, a new leader would not have them — causing a "phantom read" of data that effectively never existed durably.
