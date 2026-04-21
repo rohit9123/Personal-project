@@ -24,10 +24,21 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!--
+            micrometer-tracing-bridge-otel:
+            Bridges the Micrometer Tracing facade to the OpenTelemetry SDK.
+            Your code calls io.micrometer.tracing.Tracer; the bridge translates
+            those calls to OTel's io.opentelemetry.api.trace.Tracer at runtime.
+        -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-tracing-bridge-otel</artifactId>
         </dependency>
+        <!--
+            opentelemetry-exporter-otlp:
+            Ships completed spans to an OTel Collector (or directly to Tempo)
+            using the OTLP protocol over HTTP/protobuf on port 4318.
+        -->
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-otlp</artifactId>

@@ -8,11 +8,13 @@ spring:
 management:
   tracing:
     sampling:
-      probability: 1.0
+      probability: 1.0   # trace every request — dev only, use ~0.01 in prod
   otlp:
     tracing:
-      endpoint: http://localhost:4318/v1/traces
+      endpoint: http://localhost:4318/v1/traces   # OTel Collector HTTP receiver
 
+# Include traceId and spanId in every log line for log-to-trace correlation.
+# logging.pattern.console rewrites the entire line — unambiguous for demos.
 logging:
   pattern:
     console: "%d{HH:mm:ss.SSS} %5p [${spring.application.name},%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
