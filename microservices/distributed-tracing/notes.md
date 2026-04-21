@@ -42,8 +42,8 @@ Spring Boot auto-configures `W3CTraceContextPropagator`. Every outbound
 
 ```
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
-              ^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^ ^^
-              version   trace-id (128-bit hex)    parent-span-id   flags
+             ^^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^ ^^
+             version   trace-id (128-bit hex)    parent-span-id (spec: parent-id)   flags
 ```
 
 The downstream service extracts `traceparent`, continues the same trace, and
@@ -76,8 +76,8 @@ See `order-service/` and `inventory-service/`.
 docker compose up -d
 
 # 2. Start services
-cd inventory-service && mvn spring-boot:run &
-cd order-service    && mvn spring-boot:run &
+(cd inventory-service && mvn spring-boot:run) &
+(cd order-service    && mvn spring-boot:run) &
 
 # 3. Trigger a trace
 curl http://localhost:9081/orders/item-1
@@ -104,7 +104,7 @@ collection of all spans sharing the same trace ID — the full picture of one
 end-to-end request.
 
 **Q: How does trace context cross service boundaries?**
-A: Via the `traceparent` HTTP header (W3C Trace Context spec, RFC 7230). The
+A: Via the `traceparent` HTTP header (W3C Trace Context Recommendation). The
 upstream service injects it; the downstream service extracts it and creates a
 child span referencing the upstream span ID. Spring Boot + Micrometer handle
 injection and extraction automatically through the `RestTemplate` interceptor

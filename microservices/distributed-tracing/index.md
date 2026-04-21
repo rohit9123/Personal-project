@@ -8,14 +8,14 @@ stored in Grafana Tempo, and visualised in Grafana.
 
 | File | Description |
 |------|-------------|
-| `notes.md` | Concept reference — What / Why / How / Interview Angles |
-| `pom.xml` | Parent POM (Spring Boot 3.2.5, two modules) |
-| `order-service/` | Receives orders, calls inventory (port 9081) |
-| `inventory-service/` | Returns stock info (port 9082) |
-| `docker-compose.yml` | OTel Collector + Grafana Tempo + Grafana |
-| `otel-collector-config.yml` | Pipeline: OTLP in (4318) → batch → Tempo OTLP out (4317) |
-| `tempo-config.yml` | Tempo local-disk storage |
-| `grafana-datasources.yml` | Auto-provisions Tempo data source in Grafana |
+| [notes.md](notes.md) | Concept reference — What / Why / How / Interview Angles |
+| [pom.xml](pom.xml) | Parent POM (Spring Boot 3.2.5, two modules) |
+| [order-service/](order-service/) | Receives orders, calls inventory (port 9081) |
+| [inventory-service/](inventory-service/) | Returns stock info (port 9082) |
+| [docker-compose.yml](docker-compose.yml) | OTel Collector + Grafana Tempo + Grafana |
+| [otel-collector-config.yml](otel-collector-config.yml) | Pipeline: OTLP in (4318) → batch → Tempo OTLP out (4317) |
+| [tempo-config.yml](tempo-config.yml) | Tempo local-disk storage |
+| [grafana-datasources.yml](grafana-datasources.yml) | Auto-provisions Tempo data source in Grafana |
 
 ## Quick Start
 
