@@ -23,6 +23,20 @@ which calls are parallel vs. sequential, which spans fail.
 
 ## How
 
+### Is it automatic?
+
+Yes, mostly. Once the dependencies are added:
+
+- **Automatic**: 
+    - Creating Trace IDs and Span IDs for incoming HTTP requests.
+    - Propagating headers to downstream services (if using `RestTemplateBuilder` or `WebClient.Builder`).
+    - Correlating logs (adding IDs to your console logs automatically via MDC).
+    - Creating spans for common operations like JDBC queries or many spring-cloud integrations.
+
+- **Manual**:
+    - **Internal Spans**: If you want to trace a specific slow method *inside* your service, you use the `@Observed` annotation or the `Tracer` API.
+    - **Manual Client Instantiation**: If you use `new RestTemplate()` instead of the builder, the tracing interceptor isn't added, and the "chain" will break.
+
 ### Component roles
 
 | Component | Role |
@@ -66,6 +80,26 @@ logging:
 Micrometer adds `traceId` and `spanId` to MDC automatically. Every log line
 now includes the trace ID — paste it into Grafana Tempo's TraceQL search to
 jump directly from a log entry to the full distributed trace.
+
+## Advanced Concepts
+
+### Baggage vs. Tags
+
+- **Tags (Attributes)**: Key-value pairs attached to a **specific span**. They are used for searching/filtering *within* a backend like Tempo (e.g., `http.method=GET`, `error=true`). They do **not** propagate to other services.
+- **Baggage**: Key-value pairs that travel **across the entire trace**. If Service A sets baggage `user-id: 99`, Service Z (six hops later) can read it. 
+    - *Warning:* Baggage is sent in HTTP headers (using the `baggage` header). Overusing it increases network overhead for *every* call in the system.
+
+### Messaging (Kafka / RabbitMQ)
+
+Tracing isn't just for REST. In message-driven systems:
+1. The **Producer** injects the trace context into the **Message Headers** (not the payload).
+2. The **Consumer** extracts the context and starts a child span.
+3. This allows you to see the "gap" or lag between when a message was produced and when it was consumed in the same flame graph.
+
+### The Thread-Loss Problem (Async)
+
+Tracing context is stored in `ThreadLocal`. If you use `@Async`, `CompletableFuture`, or custom thread pools, the trace ID is **lost** because it doesn't automatically move to the new thread.
+- *Fix:* Use `ContextPropagatingExecutorService` or decorate your `TaskExecutor` with a `DelegatingSecurityContextAsyncTaskExecutor` equivalent for observations.
 
 ## Code Example
 
@@ -142,3 +176,12 @@ the gateway to pass through `traceparent` (and `tracestate`) headers. Spring Clo
 Gateway preserves them by default; NGINX requires an explicit `proxy_set_header
 traceparent $http_traceparent;` directive. This is why gateway configuration is the
 first thing to check when traces appear truncated in Tempo.
+
+**Q: What is the difference between Tags and Baggage?**
+A: Tags are local to a span; Baggage is global to a trace. Use Tags for filtering a specific service's spans. Use Baggage for information that must be visible across service boundaries (like a `customerId` or `tenantId`) without passing it through every method signature.
+
+**Q: How do you handle tracing in an asynchronous environment (e.g., @Async)?**
+A: Since tracing context is stored in `ThreadLocal`, it is lost when moving to a new thread. You must wrap your Executor in a `ContextPropagatingExecutorService` provided by Micrometer, which ensures the `Observation` context is "snapped" from the parent thread and restored in the child thread.
+
+**Q: Can you trace a request through a Message Broker like Kafka?**
+A: Yes. Modern instrumentation (Micrometer/OTel) uses **Header Injection**. The trace context is added to the Kafka Message Headers. The consumer reads these headers to re-establish the trace context. This allows you to measure "async latency" (the time a message sat in the broker).
