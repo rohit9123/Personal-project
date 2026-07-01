@@ -20,16 +20,30 @@ A Kafka **broker** is a single server process that stores data and serves client
   - Followers replicate from the Leader asynchronously; they form the **ISR (In-Sync Replica)** set.
 - If the leader fails, the Controller elects a new leader from the ISR.
 
-```
-Cluster
- ├── Broker 1 (Controller)
- │    ├── Partition 0 — Leader   ← producers/consumers here
- │    └── Partition 1 — Follower (replica)
- ├── Broker 2
- │    ├── Partition 0 — Follower (replica)
- │    └── Partition 1 — Leader
- └── Broker 3
-      └── ... replicas ...
+```mermaid
+flowchart TD
+    Cluster["Cluster"]
+    B1["Broker 1 (Controller)"]
+    B2["Broker 2"]
+    B3["Broker 3"]
+
+    B1_P0["Partition 0 — Leader"]
+    B1_P1["Partition 1 — Follower (replica)"]
+    B2_P0["Partition 0 — Follower (replica)"]
+    B2_P1["Partition 1 — Leader"]
+    B3_R["... replicas ..."]
+
+    Cluster --> B1
+    Cluster --> B2
+    Cluster --> B3
+    B1 --> B1_P0
+    B1 --> B1_P1
+    B2 --> B2_P0
+    B2 --> B2_P1
+    B3 --> B3_R
+
+    style B1_P0 fill:#d4edda,stroke:#28a745
+    style B2_P1 fill:#d4edda,stroke:#28a745
 ```
 
 ### Interview Angles
@@ -88,6 +102,7 @@ Partition 2:  [offset 0] ...
 
 ### Interview Angles
 - **How many partitions should you use?** Rule of thumb: `max(throughput_needed / throughput_per_partition, num_consumers_in_group)`. More partitions = more parallelism but also more open file handles, more ZooKeeper/KRaft metadata, and longer leader election times.
+- **Can all partitions of a topic live on the same broker?** Yes, technically possible, but Kafka's partition assignment algorithm actively distributes them across all brokers in the cluster to balance load. However, a broker can **never** host more than one replica (copy) of the **same** partition (e.g., both the Leader and a Follower of Partition 0). This is a strict constraint to ensure fault tolerance.
 - **Why does Kafka only guarantee ordering per partition?** Because records across partitions can be written and read by different threads/brokers with no coordination — there is no global sequence number.
 - **What is a partition reassignment?** Moving partition leadership or replicas to different brokers, used for rebalancing load after adding/removing brokers.
 
@@ -152,16 +167,13 @@ Kafka maintains two sparse index files per segment to enable fast random access 
 
 ### How — Lookup flow
 
-```
-Consumer asks for offset 5000
-
-1. Binary search .index for largest entry ≤ 5000
-   → finds entry (4996 → byte position 204800)
-
-2. Seek to byte 204800 in .log
-
-3. Scan forward record by record until offset 5000 is found
-   (at most log.index.interval.bytes of data to scan)
+```mermaid
+flowchart TD
+    A["Consumer asks for offset 5000"] --> B["Binary search .index for largest entry ≤ 5000"]
+    B --> C["Finds entry: offset 4996 → byte position 204800"]
+    C --> D["Seek to byte 204800 in .log"]
+    D --> E["Scan forward record by record until offset 5000 found"]
+    E --> F["At most log.index.interval.bytes of data to scan"]
 ```
 
 Time-based lookup (e.g., `--from-timestamp`):
@@ -187,26 +199,15 @@ A **producer** is a client that publishes records to Kafka topics. It decides wh
 
 **Producer internals (high level):**
 
-```
-Application
-    |
-    v
- ProducerRecord(topic, key, value, headers)
-    |
-    v
- Serializer (key + value → bytes)
-    |
-    v
- Partitioner  → decides partition (by key hash / round-robin / custom)
-    |
-    v
- RecordAccumulator (in-memory buffer, per-partition batches)
-    |  waits for batch.size OR linger.ms
-    v
- Sender thread  → picks ready batches → sends to broker leader
-    |
-    v
- Broker → acks back
+```mermaid
+flowchart TD
+    A["Application"] --> B["ProducerRecord(topic, key, value, headers)"]
+    B --> C["Serializer — key + value → bytes"]
+    C --> D["Partitioner — decides partition\n(by key hash / round-robin / custom)"]
+    D --> E["RecordAccumulator\n(in-memory buffer, per-partition batches)"]
+    E -->|"waits for batch.size OR linger.ms"| F["Sender thread — picks ready batches"]
+    F --> G["Broker Leader"]
+    G -->|"acks back"| F
 ```
 
 **Key configs:**
@@ -223,13 +224,15 @@ Application
 
 **Delivery semantics:**
 
-| Setting | Guarantee | Risk |
-|---------|-----------|------|
-| `acks=0` | At-most-once | Data loss possible |
-| `acks=1` | At-least-once | Duplicate if retry after leader crash before ISR sync |
-| `acks=all` + `enable.idempotence=true` | Exactly-once (per partition) | Highest latency |
+> **Note:** `acks` only governs the **producer → broker (write)** side. It says nothing about consumer-side / end-to-end delivery, which depends on offset-commit timing. The labels below describe the producer-write guarantee only.
 
-**Idempotent producer** assigns each record a `<ProducerID, SequenceNumber>`. Broker deduplicates retries using this pair — so even if the network drops an ack and the producer retries, the broker writes it only once.
+| Setting | Producer-write guarantee | Risk |
+|---------|--------------------------|------|
+| `acks=0` | At-most-once | Fire-and-forget — data lost if the send fails or the broker crashes |
+| `acks=1` | No guarantee on its own | Leader acks before followers replicate; if the leader crashes before replication the record is **lost** (effectively at-most-once for that record). With retries it can also yield duplicates |
+| `acks=all` + `enable.idempotence=true` | Idempotent (no-duplicate) at-least-once **within a single producer session** | Highest latency |
+
+**Idempotent producer** assigns each record a `<ProducerID, SequenceNumber>`. Broker deduplicates retries using this pair — so even if the network drops an ack and the producer retries, the broker writes it only once. This eliminates duplicates **within one producer session** (the PID is reassigned on producer restart). True exactly-once *across* producer restarts requires **transactions** (a stable `transactional.id` + the transaction API), not idempotence alone.
 
 ```java
 Properties props = new Properties();
@@ -271,17 +274,19 @@ producer.close();
 
 ## Quick-Reference Summary
 
-```
-Cluster
- └── Broker (1..N) — stores partitions, serves reads/writes
-      └── Topic — logical named feed
-           └── Partition (0..P-1) — ordered log, unit of parallelism
-                └── Segment (rolling files on disk)
-                     ├── .log       — raw record batches
-                     ├── .index     — sparse offset → byte-position map
-                     └── .timeindex — sparse timestamp → offset map
+```mermaid
+flowchart TD
+    Cluster["Cluster"] --> Broker["Broker (1..N)\nstores partitions, serves reads/writes"]
+    Broker --> Topic["Topic\nlogical named feed"]
+    Topic --> Partition["Partition (0..P-1)\nordered log, unit of parallelism"]
+    Partition --> Segment["Segment (rolling files on disk)"]
+    Segment --> Log[".log — raw record batches"]
+    Segment --> Index[".index — sparse offset → byte-position map"]
+    Segment --> TimeIndex[".timeindex — sparse timestamp → offset map"]
 
-Producer → serializes → partitions → batches → sends to Partition Leader
+    Producer["Producer"] -->|"serializes"| P2["Partitioner"]
+    P2 -->|"batches"| Sender["Sender"]
+    Sender -->|"sends to"| Leader["Partition Leader"]
 ```
 
 | Concept | Key number to remember |

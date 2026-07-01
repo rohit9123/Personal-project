@@ -648,3 +648,358 @@ adds two features: `<springProfile name="dev">` blocks that activate per Spring
 profile, and `${spring.application.name}` property substitution from
 `application.properties`. Plain `logback.xml` is loaded by Logback directly
 before Spring context starts, so neither feature is available.
+
+---
+
+# Async Logging
+
+## What
+
+Synchronous appenders write to their destination (disk, socket) on the
+**application thread** — the thread that called `log.info(...)` blocks until the
+I/O completes. Async logging offloads that I/O to a background thread via a
+queue, so the application thread returns almost immediately.
+
+Two distinct mechanisms exist depending on the framework:
+
+| Mechanism | Framework | How it works |
+|-----------|-----------|--------------|
+| **AsyncAppender** | Logback | Wraps *any* existing appender; puts events in a `BlockingQueue`; one background thread drains it |
+| **AsyncLogger** | Log4j2 | Logger-level async via LMAX Disruptor ring buffer; much higher throughput |
+
+Spring Boot ships Logback by default → use **AsyncAppender**.
+Switch to Log4j2 to get **AsyncLogger** with Disruptor.
+
+---
+
+## Why
+
+Synchronous file writes are ~1–10 ms each. At 1000 log calls/sec that is
+1–10 s of thread time *per second* wasted on I/O. Async logging reduces
+application-thread latency to microseconds and prevents logging from becoming
+a throughput bottleneck.
+
+---
+
+## How
+
+### AsyncAppender (Logback)
+
+```xml
+<!-- 1. Define the real (delegate) appender -->
+<appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>logs/app.log</file>
+    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+        <fileNamePattern>logs/app.%d{yyyy-MM-dd}.log</fileNamePattern>
+        <maxHistory>30</maxHistory>
+    </rollingPolicy>
+    <encoder>
+        <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+    </encoder>
+</appender>
+
+<!-- 2. Wrap it in AsyncAppender -->
+<appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+    <queueSize>512</queueSize>          <!-- default 256; tune to burst size -->
+    <discardingThreshold>0</discardingThreshold>  <!-- 0 = never discard; default 20% = discards TRACE/DEBUG/INFO when queue 80% full -->
+    <neverBlock>false</neverBlock>      <!-- false = block when queue full; true = drop silently -->
+    <includeCallerData>false</includeCallerData>  <!-- true = expensive stack walk for %caller token -->
+    <appender-ref ref="FILE"/>          <!-- delegate to the real appender -->
+</appender>
+
+<!-- 3. Wire to root -->
+<root level="INFO">
+    <appender-ref ref="ASYNC_FILE"/>
+</root>
+```
+
+Key knobs:
+
+| Property | Default | Effect |
+|----------|---------|--------|
+| `queueSize` | 256 | Queue capacity. Increase for bursty traffic. |
+| `discardingThreshold` | 20 | % full at which TRACE/DEBUG/INFO are *silently dropped*. Set `0` to never discard. |
+| `neverBlock` | false | If `true`, drops events instead of blocking the caller when the queue is full. |
+| `includeCallerData` | false | Compute `%caller` / line numbers — expensive; leave false unless you need it. |
+
+**Behaviour when queue fills up:**
+- `neverBlock=false` (default): application thread **blocks** until space is available — latency spikes but no data loss.
+- `neverBlock=true`: event **dropped** silently — no latency spike, but logs are lost.
+
+### AsyncLogger (Log4j2) — for reference
+
+```xml
+<!-- log4j2.xml -->
+<AsyncLogger name="com.example" level="DEBUG" additivity="false">
+    <AppenderRef ref="RollingFile"/>
+</AsyncLogger>
+```
+
+Uses LMAX Disruptor — a lock-free ring buffer. Benchmarks show 6–68× higher
+throughput vs synchronous. Works at the **Logger** level, not the appender level.
+Requires `log4j-core` + `disruptor` on the classpath.
+
+---
+
+## Interview Angles — Async Logging
+
+**Q: What problem does AsyncAppender solve?**
+A: It decouples the application thread from I/O. Synchronous appenders write to
+disk on the calling thread; if the disk is slow or the log file is on a network
+share, every log call adds latency to the request path. AsyncAppender puts the
+event in a queue and returns immediately; a background thread does the actual
+write. This trades a small amount of memory (the queue) and the risk of losing
+in-flight events on crash for lower p99 request latency.
+
+**Q: What happens to logs if the application crashes with an AsyncAppender?**
+A: Events still in the queue are lost. Logback's shutdown hook flushes the queue
+on a graceful JVM exit, but a hard kill (`kill -9`) or OOM crash loses whatever
+is queued. If zero-loss is required use a synchronous appender or ensure the
+queue is drained before shutdown (set `discardingThreshold=0` and keep
+`neverBlock=false` so the queue must be drained before the app exits).
+
+**Q: What is `discardingThreshold` and when would you change it?**
+A: When the queue reaches `(100 - discardingThreshold)%` full, Logback starts
+silently dropping TRACE, DEBUG, and INFO events to protect the queue from
+overflowing and blocking the application. The default is 20 (drop below-WARN
+when 80% full). Set it to `0` to never discard — the queue can fill to 100%,
+after which the application thread blocks (or drops, if `neverBlock=true`). Set
+to `0` when log completeness matters more than latency; leave at default for
+latency-sensitive services.
+
+**Q: AsyncAppender vs AsyncLogger — which is better?**
+A: AsyncLogger (Log4j2 + Disruptor) wins on raw throughput — it is lock-free and
+operates at the logger level, batching events more efficiently. AsyncAppender is
+simpler to add to an existing Logback setup (just wrap any appender). For most
+Spring Boot services AsyncAppender is sufficient; switch to Log4j2 AsyncLogger
+only when profiling shows logging is a measurable bottleneck.
+
+---
+
+# Filters in Appenders
+
+## What
+
+A **Filter** sits between the logger's level check and the appender's `append()`
+call. It lets an appender accept or reject individual log events based on
+criteria beyond the logger's effective level.
+
+Logback filter chain decisions:
+
+| Decision | Meaning |
+|----------|---------|
+| `ACCEPT` | Let the event through; stop evaluating further filters |
+| `DENY` | Drop the event; stop evaluating further filters |
+| `NEUTRAL` | Pass to the next filter in the chain; if no more filters, ACCEPT |
+
+---
+
+## How
+
+### LevelFilter — exact level match
+
+Accept only `ERROR`; drop everything else:
+
+```xml
+<appender name="ERROR_ONLY" class="ch.qos.logback.core.ConsoleAppender">
+    <filter class="ch.qos.logback.classic.filter.LevelFilter">
+        <level>ERROR</level>
+        <onMatch>ACCEPT</onMatch>
+        <onMismatch>DENY</onMismatch>
+    </filter>
+    <encoder>
+        <pattern>%d %-5level %logger - %msg%n</pattern>
+    </encoder>
+</appender>
+```
+
+### ThresholdFilter — minimum level
+
+Accept `WARN` and above; drop DEBUG/INFO:
+
+```xml
+<appender name="WARN_UP" class="ch.qos.logback.core.ConsoleAppender">
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+        <level>WARN</level>   <!-- NEUTRAL below threshold → DENY; ACCEPT at/above -->
+    </filter>
+    <encoder>
+        <pattern>%d %-5level %logger - %msg%n</pattern>
+    </encoder>
+</appender>
+```
+
+### Multiple Filters (chained)
+
+Filters evaluate in order. First non-NEUTRAL decision wins:
+
+```xml
+<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <!-- 1. Drop TRACE entirely -->
+    <filter class="ch.qos.logback.classic.filter.LevelFilter">
+        <level>TRACE</level>
+        <onMatch>DENY</onMismatch>
+        <onMismatch>NEUTRAL</onMismatch>
+    </filter>
+    <!-- 2. Accept everything else -->
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+        <level>DEBUG</level>
+    </filter>
+    <encoder>...</encoder>
+</appender>
+```
+
+### Custom Filter
+
+Extend `Filter<ILoggingEvent>`:
+
+```java
+public class SensitivePackageFilter extends Filter<ILoggingEvent> {
+    @Override
+    public FilterReply decide(ILoggingEvent event) {
+        if (event.getLoggerName().startsWith("com.example.payment")) {
+            return FilterReply.DENY;
+        }
+        return FilterReply.NEUTRAL;
+    }
+}
+```
+
+```xml
+<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <filter class="com.example.logging.SensitivePackageFilter"/>
+    <encoder>...</encoder>
+</appender>
+```
+
+---
+
+## Interview Angles — Filters
+
+**Q: What is the difference between a logger level and an appender filter?**
+A: The logger level is a coarse gate: events below the effective level are
+discarded *before* any appender sees them. An appender filter is a fine-grained
+gate *inside* the appender: it can accept or deny events that already passed the
+logger level. Use logger levels for broad control (silence third-party DEBUG);
+use filters for targeted routing (only ERROR events go to PagerDuty appender,
+only audit events go to the audit file appender).
+
+**Q: Difference between LevelFilter and ThresholdFilter?**
+A: `LevelFilter` matches one *exact* level — you specify `onMatch` and
+`onMismatch` decisions, giving full control. `ThresholdFilter` is a minimum-level
+gate: it returns NEUTRAL (pass) for events at or above the threshold and DENY for
+events below — simpler, but no per-level routing.
+
+---
+
+# Log Format and Pattern
+
+## What
+
+A **pattern** is the format string used by Logback's `PatternLayoutEncoder` to
+convert a log event into a human-readable string.
+
+---
+
+## How
+
+### Common Pattern Tokens
+
+| Token | Output | Notes |
+|-------|--------|-------|
+| `%d{HH:mm:ss.SSS}` | Timestamp | `%d` alone uses ISO-8601 |
+| `%p` / `%-5level` | Log level | `%-5` left-aligns in 5-char field |
+| `%t` / `%thread` | Thread name | |
+| `%logger{36}` | Logger name | Abbreviated to 36 chars max |
+| `%msg` / `%m` | Message | |
+| `%n` | OS line separator | Always end patterns with `%n` |
+| `%ex` | Stack trace | Appended automatically with `%msg%n` |
+| `%X{key}` | MDC value | e.g., `%X{traceId}` |
+| `%clr(%d){faint}` | Coloured output (console) | Spring Boot default uses `%clr` |
+| `%relative` | Ms since JVM start | Lightweight alternative to `%d` |
+
+### Spring Boot Default Pattern
+
+```
+%clr(%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx
+```
+
+Override in `application.properties`:
+
+```properties
+logging.pattern.console=%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n
+logging.pattern.file=%d{yyyy-MM-dd HH:mm:ss} %-5level %logger{36} - %msg%n
+```
+
+Or directly in `logback-spring.xml`:
+
+```xml
+<property name="LOG_PATTERN"
+          value="%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} [%X{traceId}] - %msg%n"/>
+
+<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+        <pattern>${LOG_PATTERN}</pattern>
+    </encoder>
+</appender>
+```
+
+---
+
+# Placeholders in Log Statements
+
+## What
+
+SLF4J supports **parameterised logging** using `{}` placeholders. The message
+template and arguments are kept separate; Logback only interpolates them if the
+log event will actually be emitted.
+
+## Why
+
+String concatenation is evaluated *before* calling the logger — even if the
+level is disabled:
+
+```java
+// BAD — toString() + concat always runs, even when DEBUG is off
+log.debug("Processing order: " + order.toString());
+
+// GOOD — toString() deferred; never called if DEBUG is disabled
+log.debug("Processing order: {}", order);
+```
+
+## How
+
+```java
+// Single placeholder
+log.info("Order {} placed successfully", orderId);
+
+// Multiple placeholders
+log.info("Order {} placed by user {} at {}", orderId, userId, Instant.now());
+
+// Exception — always the LAST argument, no placeholder for it
+// Logback recognises a Throwable final arg and appends the full stack trace
+log.error("Failed to process order {}", orderId, ex);
+
+// Array/varargs (more than 2 params are automatically varargs)
+log.debug("Step {}/{} — item={} qty={}", step, total, item, qty);
+```
+
+**Rule:** the exception (`Throwable`) must be the **last** argument and must
+**not** have a corresponding `{}`. Logback detects it by type and prints the
+full stack trace after the message.
+
+---
+
+## Interview Angles — Patterns and Placeholders
+
+**Q: Why use `{}` placeholders instead of string concatenation in log calls?**
+A: `log.debug("val={}", x)` defers the `toString()` and string construction to
+inside Logback's pipeline, where the level check has already happened. If DEBUG
+is off, the string is never built — saving CPU and reducing garbage, which matters
+at high call rates. Concatenation (`"val=" + x`) runs unconditionally on the
+caller's thread regardless of level.
+
+**Q: How do you log an exception with SLF4J?**
+A: Pass the `Throwable` as the **last** argument with no corresponding `{}`
+placeholder: `log.error("Failed for id {}", id, ex)`. Logback recognises the
+trailing Throwable by type and appends the full stack trace. Adding a placeholder
+for the exception would print only its `toString()` and suppress the trace.

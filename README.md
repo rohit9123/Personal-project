@@ -6,6 +6,7 @@ Pick any topic, anytime.
 
 | Folder | Covers |
 |--------|--------|
+| [`java/`](./java/) | Multithreading, JMM, Reflection, Thread lifecycle, and Core Java concepts |
 | [`spring-boot/`](./spring-boot/) | Core, Web, Data, Security, Actuator, Testing |
 | [`microservices/`](./microservices/) | Patterns, API Gateway, Circuit Breaker, Service Discovery, Distributed Tracing |
 | [`lld/`](./lld/) | OOP Principles, SOLID, Design Patterns, Component Design with Java code |

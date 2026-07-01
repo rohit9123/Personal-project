@@ -11,7 +11,7 @@ An **API Gateway** is the single entry point for all client traffic in a microse
 ```
 Client Request
   → GlobalFilters (every route: logging, JWT auth, ...)
-    → GatewayFilters (per-route: CircuitBreaker, Retry, StripPrefix, ...)
+    → GatewayFilters (per-route: StripPrefix, CircuitBreaker, Retry, ...)
       → downstream service
         → response flows back through all filters
 ```
@@ -25,7 +25,8 @@ Two types of filters:
 
 This demo implements:
 - **GlobalFilter — LoggingFilter**: logs method, path, status, latency for every request
-- **GlobalFilter — JwtAuthFilter**: validates Bearer JWT on every route; whitelists `/token`, `/fallback/**`, `/actuator/**`
+- **GlobalFilter — JwtAuthFilter**: validates Bearer JWT on every route; whitelists `/token`, `/fallback/`, `/actuator/`
+- **GatewayFilter — StripPrefix**: strips the gateway prefix (e.g., `/api`) before forwarding
 - **GatewayFilter — Retry**: retries failed calls with exponential backoff before the CB sees the outcome
 - **GatewayFilter — CircuitBreaker**: trips after sustained failures; redirects to a local fallback endpoint
 
@@ -70,7 +71,7 @@ Auth, resilience, and load balancing live in one place. Downstream services are 
 ```
 Every request → JwtAuthFilter (order 0, runs inside LoggingFilter wrapper)
   ↓
-Is path whitelisted? (/token, /fallback/**, /actuator/**)
+Is path whitelisted? (/token, /fallback/, /actuator/)
   YES → skip JWT, continue chain
   NO  ↓
 Read Authorization: Bearer <token> header
@@ -89,9 +90,10 @@ Continue filter chain → request reaches GatewayFilters and then downstream
 ```
 LoggingFilter  (order -1)  ← outermost — wraps everything, logs all requests
   └── JwtAuthFilter (order  0)  ← auth check; 401 flows back through LoggingFilter
-        └── CircuitBreakerFilter  ← built-in GatewayFilter
-              └── RetryFilter
-                    └── downstream
+        └── StripPrefix  ← built-in GatewayFilter
+              └── CircuitBreakerFilter  ← built-in GatewayFilter
+                    └── RetryFilter
+                          └── downstream
 ```
 
 Lower order number = higher priority = runs first. LoggingFilter at -1 wraps JwtAuthFilter at 0, so even rejected-401 requests appear in the gateway log with status 401.
@@ -127,11 +129,10 @@ Configuration:
       firstBackoff: 100ms
       maxBackoff: 1000ms
       factor: 2                                             # doubles the wait each time
+      basedOnPreviousValue: false
 ```
 
 **Why only GET?** POST/PUT are not safely retryable — retrying a payment or order creation would duplicate it. Only retry idempotent methods.
-
-**Evidence in logs:** Breaking the inventory service and sending one gateway request produces 3 or 4 log lines in the inventory-service (one per retry attempt), but only one log line in the client.
 
 ---
 
@@ -159,6 +160,7 @@ The CB + Retry filter order in the yaml matters:
 
 ```yaml
 filters:
+  - StripPrefix=1
   - name: CircuitBreaker   # OUTER — wraps Retry
     args:
       name: inventory-cb
@@ -174,13 +176,14 @@ This way: retries happen inside one CB "call unit". CB only counts the net outco
 
 | File | What it is |
 |------|-----------|
-| `api-gateway/JwtAuthFilter.java` | `GlobalFilter` (order 0) — validates JWT, adds `X-Authenticated-User` header |
-| `api-gateway/LoggingFilter.java` | `GlobalFilter` (order -1) — wraps everything, logs all requests in/out |
-| `api-gateway/TokenController.java` | `GET /token?user=xxx` — issues demo JWTs (whitelisted from JWT check) |
-| `api-gateway/FallbackController.java` | `GET /fallback/inventory` + `/fallback/orders` — CB fallback responses |
-| `api-gateway/ApiGatewayApp.java` | Entry point |
-| `api-gateway/application.yml` | Routes: StripPrefix + CircuitBreaker + Retry; Resilience4j config; JWT secret |
-| `inventory-service/InventoryController.java` | Adds `POST /inventory/break` + `POST /inventory/fix`; logs `X-Authenticated-User` |
+| `api-gateway/src/main/java/com/example/gateway/JwtAuthFilter.java` | `GlobalFilter` (order 0) — validates JWT, adds `X-Authenticated-User` header |
+| `api-gateway/src/main/java/com/example/gateway/LoggingFilter.java` | `GlobalFilter` (order -1) — wraps everything, logs all requests in/out |
+| `api-gateway/src/main/java/com/example/gateway/TokenController.java` | `GET /token?user=xxx` — issues demo JWTs (whitelisted from JWT check) |
+| `api-gateway/src/main/java/com/example/gateway/FallbackController.java` | `GET /fallback/inventory` + `/fallback/orders` — CB fallback responses |
+| `api-gateway/src/main/java/com/example/gateway/ApiGatewayApp.java` | Gateway Entry point |
+| `api-gateway/src/main/resources/application.yml` | Routes: StripPrefix + CircuitBreaker + Retry; Resilience4j config; JWT secret |
+| `inventory-service/src/main/java/com/example/inventoryservice/InventoryController.java` | Adds `POST /inventory/break` + `POST /inventory/fix` |
+| `order-service/src/main/java/com/example/orderservice/OrderController.java` | Simple downstream endpoint for testing `/api/orders/**` |
 
 ---
 
@@ -236,13 +239,12 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-
 # Product 'item-1' is IN STOCK  [served by instance on port 9081]
 ```
 
-**Step 4: Observe identity propagation in inventory-service logs**
+**Step 4: Call order-service with token**
 
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/orders/42
+# Order #42 confirmed — routed via API Gateway to order-service (port 9082)
 ```
-[port=9081] [user=rohit] /inventory/item-1 → HEALTHY — returning stock
-```
-
-The gateway extracted `rohit` from the JWT and forwarded it as `X-Authenticated-User: rohit`. The downstream service received the caller's identity without doing any JWT parsing itself.
 
 ---
 
@@ -269,8 +271,6 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-
 [port=9081] /inventory/item-1 → BROKEN — returning 500
 ```
 
-3 log lines from 1 client request = Retry firing 3 times with 100ms/200ms/400ms backoff.
-
 ---
 
 ### Demo C — Circuit Breaker
@@ -278,8 +278,6 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-
 **Step 1: Still broken — accumulate failures**
 
 ```bash
-# Each call → 3 retries → 1 CB failure event
-# Need 3 failures in the 5-call sliding window (60% threshold)
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-1
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-1
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-1
@@ -290,8 +288,6 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-
 ```bash
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-1
 # HTTP 503 — Inventory service is temporarily unavailable (circuit breaker is OPEN)...
-
-# No log line in inventory-service — the CB stopped the call before it was made
 ```
 
 **Step 3: Check CB state via Actuator**
@@ -299,40 +295,14 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-
 ```bash
 curl http://localhost:8080/actuator/circuitbreakers | jq .
 # → { "circuitBreakers": { "inventory-cb": { "state": "OPEN", ... } } }
-
-curl http://localhost:8080/actuator/health | jq .
-# → { "status": "DEGRADED", "components": { "circuitBreakers": { "inventory-cb": "OPEN" } } }
 ```
 
 **Step 4: Wait 10s → HALF_OPEN, fix inventory, watch CB close**
 
 ```bash
-# Fix the service
 curl -X POST http://localhost:9081/inventory/fix
-
-# After 10s, send 2 probe calls (permitted-calls-in-half-open = 2)
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-1
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-1
-# Both succeed → CB transitions HALF_OPEN → CLOSED
-
-curl http://localhost:8080/actuator/circuitbreakers | jq .
-# → { "inventory-cb": { "state": "CLOSED", ... } }
-```
-
----
-
-### Demo D — Load Balancing (recap with auth)
-
-```bash
-# Start a second inventory-service instance
-cd inventory-service
-mvn spring-boot:run -Dspring-boot.run.arguments=--server.port=9083
-
-# Hit gateway repeatedly — see port alternating in response
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-1
-# ... [served by instance on port 9081]
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-1
-# ... [served by instance on port 9083]
 ```
 
 ---
@@ -341,67 +311,12 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/inventory/item-
 
 **Q: GlobalFilter vs GatewayFilter — which do you use for JWT and why?**
 
-`GlobalFilter` for JWT. JWT is a cross-cutting concern — every route needs it. If you used a `GatewayFilter`, you'd add it to every route's filter list and forget it on new routes. `GlobalFilter` is automatic for all routes; exceptions (like `/token`) are handled by a whitelist inside the filter logic. Contrast with `StripPrefix` — that's route-specific (you only strip the `/api` prefix on certain routes), so it belongs as a `GatewayFilter` in the route config.
-
----
+`GlobalFilter` for JWT. JWT is a cross-cutting concern — every route needs it. `GatewayFilter` is used for route-specific tasks, like `StripPrefix`.
 
 **Q: Why does CircuitBreaker go before Retry in the filter list?**
 
-Because GatewayFilters listed earlier wrap filters listed later. Putting CB first means:
-```
-CB (outer) → Retry (inner) → downstream
-```
-Retry fires multiple attempts inside a single CB call. The CB only counts the net outcome after all retries fail. If you reversed the order (Retry → CB), each individual retry attempt would count as a separate CB failure — the CB would trip after far fewer "real" failures.
-
----
-
-**Q: What does JwtAuthFilter add as a header, and why?**
-
-`X-Authenticated-User: <subject>`. This is the **token relay / identity propagation** pattern. Benefits:
-1. Downstream services don't need the JWT library — they just read a header
-2. Downstream services are decoupled from the auth mechanism (could switch from JWT to opaque tokens without touching downstream code)
-3. Centralized auth: the gateway is the single point of JWT validation; downstream services trust gateway-set headers (network policy ensures only the gateway can reach them)
-
----
-
-**Q: What happens to retries when the Circuit Breaker is OPEN?**
-
-Retries never fire. When the CB is OPEN, the `CircuitBreakerGatewayFilter` short-circuits immediately and redirects to the fallback URI. The Retry filter, which is inside the CB's wrapped chain, is never invoked. This is the whole point — the CB prevents hammering a known-failing service with retries.
-
----
+Filters listed earlier wrap filters listed later. `CB -> Retry -> downstream` ensures retries happen inside a single CB call unit.
 
 **Q: Why does the Retry filter only retry GET requests?**
 
-Idempotency. A GET for stock data can be retried safely — you always want the same result. A POST to create an order must NOT be retried automatically — each retry creates a duplicate order. Retry is only safe for idempotent operations (GET, HEAD, PUT, DELETE by convention). The gateway config explicitly lists `methods: GET` to enforce this.
-
----
-
-**Q: What does `forward:/fallback/inventory` mean in the CircuitBreaker config?**
-
-`forward:` is an internal server-side forward — the gateway handles the request locally using its own `@RestController` (`FallbackController`). No HTTP round-trip happens. The client sees the fallback response (503) but it came from the gateway itself, not from an external service. This is faster than redirecting to an external fallback service and avoids adding another network hop in the degraded path.
-
----
-
-**Q: How would you make JWT validation stateless vs stateful?**
-
-| | Stateless (this demo) | Stateful (opaque tokens) |
-|---|---|---|
-| Token format | JWT — self-contained | Opaque string — lookup required |
-| Validation | Verify signature locally (no DB) | HTTP call to auth server per request |
-| Revocation | Impossible until expiry (short TTL needed) | Immediate (delete from DB) |
-| Scaling | Excellent — no shared state | Bottleneck on auth server |
-
-JWTs are stateless — you can validate without contacting any server. The trade-off is revocation: once issued, a JWT cannot be invalidated before its expiry. Mitigation: keep expiry short (15 min) and use refresh tokens for session continuity.
-
----
-
-**Q: Spring Cloud Gateway vs Zuul — key differences?**
-
-| | Spring Cloud Gateway | Zuul 1 |
-|---|---|---|
-| I/O model | Reactive (WebFlux + Netty) | Blocking (Servlet + Tomcat) |
-| Concurrency | Event loop — few threads handle thousands of connections | One thread per connection |
-| Backpressure | Native (Project Reactor) | None |
-| Spring Boot 3 support | Full | Deprecated |
-
-Zuul 2 added non-blocking I/O but Spring Cloud dropped Zuul in favour of Gateway. Always use Spring Cloud Gateway in new Spring Cloud projects.
+Idempotency. POST/PUT might duplicate transactions.

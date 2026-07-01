@@ -100,3 +100,25 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 2. Use `detect_changes` for code review.
 3. Use `get_affected_flows` to understand impact.
 4. Use `query_graph` pattern="tests_for" to check coverage.
+
+## Multi-Agent Collaboration (Claude Code & Antigravity)
+
+To collaborate with the **Antigravity (AGY)** agent in this workspace, use the global command-line tool `agent-sync`. This tool synchronizes tasks, manages file-level locks, handles handoffs, and facilitates importing documentation.
+
+### Core Guidelines
+
+1. **Context Gathering & Task Creation**: Claude Code has environment permissions (e.g. GitHub CLI, Atlassian Confluence) that Antigravity might not have. If the user requests external context, retrieve it (using MCP tools or CLI) and register the task for Antigravity:
+   - *Example (GitHub)*: Run `agent-sync import-github <issue_id> --assignee antigravity`
+   - *Example (Confluence)*: Retrieve the page content and run `agent-sync add-task "Title" --assignee antigravity --details "Page content..."` or pipe it using `agent-sync add-task "Title" --assignee antigravity --details-stdin`
+2. **Task Ownership**: Check the active board in `AGENT_BOARD.md` or run `agent-sync status` to see who is working on what.
+   - If a task is assigned to you (`claude`), claim it before working: `agent-sync claim-task <id>`
+   - When finished, mark it complete: `agent-sync complete-task <id>`
+3. **Locking Files**: Before making edits to files or directories, lock them so Antigravity knows not to touch them and avoid conflicts:
+   - Run `agent-sync lock <path> --reason "reason"` (e.g. `agent-sync lock microservices/ --reason "Upgrading Eureka version"`)
+   - Unlock immediately after committing/finishing: `agent-sync unlock <path>`
+4. **Handoffs**: To hand off tasks or ask Antigravity to take over, write a handoff message:
+   - Run `agent-sync handoff --to antigravity --msg "Message details outlining next steps"`
+5. **Autonomous Delegation**: You can directly spawn the Antigravity agent to execute a task synchronously:
+   - Run `agent-sync delegate --to antigravity --task "Task description" [--details "Optional details"]`
+
+

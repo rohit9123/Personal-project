@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: kafka-consumer-demo
+  kafka:
+    bootstrap-servers: localhost:9092
+
+logging:
+  level:
+    com.example.kafkaconsumer: INFO
+    org.springframework.kafka: INFO
+    org.apache.kafka: WARN
