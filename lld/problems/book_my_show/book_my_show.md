@@ -137,6 +137,7 @@ classDiagram
 
     class BookingService {
         -Map~String, Show~ shows
+        -Map~String, Booking~ bookings
         -PricingStrategy pricingStrategy
         -List~BookingObserver~ observers
         +bookTickets(String showId, List~String~ seatIds, String userId) Booking
