@@ -52,6 +52,59 @@ If your problem is "fan out a stream of events to many independent consumers, al
 
 **Choose Kafka when:** you need replay, high fan-out to multiple independent consumer groups, ordered streams, very high throughput, or the event log itself is a source of truth (event sourcing, CDC).
 
+### RabbitMQ Competing Consumers & The Ordering Problem
+
+Unlike Kafka, **RabbitMQ queues do not have partitions**. A queue is a single FIFO structure. 
+
+#### Competing Consumers Pattern
+You can attach **multiple consumers to a single RabbitMQ queue** to process messages in parallel. This is called the *Competing Consumers* pattern. RabbitMQ distributes messages to these consumers in a round-robin fashion.
+
+```mermaid
+flowchart TD
+    Queue[("RabbitMQ Queue<br/>[Msg 1, Msg 2, Msg 3]")] -->|Round Robin| C1["Consumer A<br/>(Processes Msg 1)"]
+    Queue -->|Round Robin| C2["Consumer B<br/>(Processes Msg 2)"]
+    Queue -->|Round Robin| C3["Consumer C<br/>(Processes Msg 3)"]
+```
+
+#### ⚠️ The Catch: Loss of Ordering
+Because multiple consumers process messages concurrently, **message ordering is lost**. 
+* If *Consumer B* is faster than *Consumer A*, **Message 2** will complete processing before **Message 1**.
+* If *Consumer A* crashes while processing **Message 1**, the message is re-queued and delivered to *Consumer C*, completely out of sequence.
+
+#### How to Solve Ordering in RabbitMQ:
+
+##### Solution 1: Single Active Consumer (SAC)
+You can mark a queue with the `x-single-active-consumer` argument. 
+* Only **one** consumer is active and receives messages (guaranteeing strict ordering).
+* Other consumers are kept as **standbys**. If the active consumer dies, RabbitMQ automatically promotes one standby consumer to active.
+* *Trade-off*: You lose parallel processing throughput.
+
+```mermaid
+flowchart LR
+    Queue[("Queue (x-single-active-consumer=true)")] -->|Active| C1["Consumer A (Processing)"]
+    Queue -.->|Standby| C2["Consumer B (Idle)"]
+    Queue -.->|Standby| C3["Consumer C (Idle)"]
+```
+
+##### Solution 2: Consistent Hash Exchange (Simulating Partitions)
+To get both **ordering and parallel processing**, you can simulate Kafka's partitioning:
+1. Create multiple queues (e.g., `queue_1`, `queue_2`, `queue_3`).
+2. Bind them to a **Consistent Hash Exchange**.
+3. Publish messages with a routing key (e.g., `order_id`). The exchange hashes the routing key and routes all events for a specific `order_id` to the same queue.
+4. Run **exactly one consumer per queue**.
+
+```mermaid
+flowchart LR
+    Msg["Msg (Routing Key: order_123)"] --> CHE["Consistent Hash Exchange"]
+    CHE -->|Hash match| Q1[("Queue 1")]
+    CHE -.-> Q2[("Queue 2")]
+    CHE -.-> Q3[("Queue 3")]
+    
+    Q1 -->|Single Consumer| C1["Consumer A"]
+    Q2 -->|Single Consumer| C2["Consumer B"]
+    Q3 -->|Single Consumer| C3["Consumer C"]
+```
+
 ---
 
 ## 3. Kafka vs AWS SQS / SNS
