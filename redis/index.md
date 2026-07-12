@@ -38,6 +38,9 @@ Three themes run through everything an interviewer will push on:
 | 12 | Memory model & ops (encodings, fragmentation, jemalloc, latency monitoring, slowlog, persistence ops) | 12-memory-ops.md | ✅ |
 | 13 | **Postgres + Redis system design** (who owns which guarantee, cache-aside, idempotency, fencing, outbox, failure matrix) | [13-postgres-redis-system-design.md](13-postgres-redis-system-design.md) | ✅ |
 | 14 | Specialized data types: HyperLogLog (cardinality), Bitmaps/Bitfields (DAU, packed counters), Geo (radius queries) | [14-specialized-data-types.md](14-specialized-data-types.md) | ✅ |
+| 15 | Redis Pipelining vs. Lua Scripting (Network optimization vs. atomic server-side script execution) | [15-pipelining-vs-lua-scripting.md](15-pipelining-vs-lua-scripting.md) | ✅ |
+| 16 | Redis Operations: Big Keys & Hot Keys (How they crash clusters, how to detect them, and design mitigations) | [16-hot-keys-big-keys.md](16-hot-keys-big-keys.md) | ✅ |
+| 17 | Redis HyperLogLog Deep Dive (Mathematical foundation, bit-sliced 6-bit registers, sparse/dense encodings, Linear Counting) | [17-hyperloglog-deep-dive.md](17-hyperloglog-deep-dive.md) | ✅ |
 
 ## The 8 questions this track must let you answer cold
 
